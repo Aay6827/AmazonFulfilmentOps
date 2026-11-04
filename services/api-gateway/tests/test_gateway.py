@@ -1,11 +1,10 @@
-﻿import json
+import json
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
-
 from app import main
 from app.clients import build
+from fastapi.testclient import TestClient
 
 client = TestClient(main.app)
 

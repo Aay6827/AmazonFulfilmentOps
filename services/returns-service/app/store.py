@@ -1,4 +1,4 @@
-﻿from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from uuid import uuid4
 
 from . import config
@@ -36,7 +36,7 @@ TRANSITIONS = {
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ReturnStore:

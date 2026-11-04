@@ -1,4 +1,4 @@
-﻿import time
+import time
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest

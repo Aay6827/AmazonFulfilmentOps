@@ -1,11 +1,10 @@
-﻿import threading
+import threading
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import app, store
 from app.models import ReserveItem, ReserveRequest
 from app.store import InsufficientStock
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

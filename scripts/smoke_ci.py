@@ -1,4 +1,4 @@
-﻿"""Smoke test for the docker compose stack. Stdlib only, runs on Linux or Windows."""
+"""Smoke test for the docker compose stack. Stdlib only, runs on Linux or Windows."""
 import json
 import socket
 import subprocess

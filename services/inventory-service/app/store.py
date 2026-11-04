@@ -1,4 +1,4 @@
-﻿import threading
+import threading
 
 from .models import (
     Reservation,

@@ -1,4 +1,4 @@
-﻿import time
+import time
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request, Response

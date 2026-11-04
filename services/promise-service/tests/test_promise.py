@@ -1,9 +1,8 @@
-﻿from datetime import date
-
-from fastapi.testclient import TestClient
+from datetime import date
 
 from app.logic import add_business_days, next_business_day
 from app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 

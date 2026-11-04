@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from .models import Order, OrderCreate, OrderStatus
@@ -22,7 +22,7 @@ class OrderStore:
             region=payload.region,
             items=payload.items,
             status=OrderStatus.CREATED,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
         )
         self._orders[order.id] = order
         if key:

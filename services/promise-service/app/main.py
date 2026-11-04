@@ -1,4 +1,4 @@
-﻿import time
+import time
 from datetime import datetime
 
 from fastapi import FastAPI, Request, Response

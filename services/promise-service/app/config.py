@@ -1,4 +1,4 @@
-﻿from datetime import date
+from datetime import date
 
 # Business-day transit time per region and service level
 TRANSIT_DAYS = {
