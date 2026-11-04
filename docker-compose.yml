@@ -1,0 +1,68 @@
+name: amazonfulfilmentops
+
+x-defaults: &defaults
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  order-service:
+    <<: *defaults
+    image: amazonfulfilmentops/order-service:dev
+    build:
+      context: ./services/order-service
+      args:
+        PORT: "45000"
+
+  inventory-service:
+    <<: *defaults
+    image: amazonfulfilmentops/inventory-service:dev
+    build:
+      context: ./services/inventory-service
+      args:
+        PORT: "45001"
+
+  promise-service:
+    <<: *defaults
+    image: amazonfulfilmentops/promise-service:dev
+    build:
+      context: ./services/promise-service
+      args:
+        PORT: "45002"
+
+  returns-service:
+    <<: *defaults
+    image: amazonfulfilmentops/returns-service:dev
+    build:
+      context: ./services/returns-service
+      args:
+        PORT: "45003"
+
+  api-gateway:
+    <<: *defaults
+    image: amazonfulfilmentops/api-gateway:dev
+    build:
+      context: ./services/api-gateway
+      args:
+        PORT: "45004"
+    ports:
+      - "45004:45004"
+    environment:
+      ORDER_URL: http://order-service:45000
+      INVENTORY_URL: http://inventory-service:45001
+      PROMISE_URL: http://promise-service:45002
+      RETURNS_URL: http://returns-service:45003
+    depends_on:
+      order-service:
+        condition: service_healthy
+      inventory-service:
+        condition: service_healthy
+      promise-service:
+        condition: service_healthy
+      returns-service:
+        condition: service_healthy
