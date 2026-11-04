@@ -1,0 +1,59 @@
+groups:
+  - name: fulfilment
+    rules:
+      - alert: ServiceDown
+        expr: up{job!="prometheus"} == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus cannot scrape {{ $labels.job }} at {{ $labels.instance }}."
+
+      - alert: GatewayHighErrorRate
+        expr: |
+          (sum(rate(gateway_http_requests_total{status=~"5.."}[1m])) or vector(0))
+            / sum(rate(gateway_http_requests_total[1m])) > 0.05
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Gateway 5xx ratio above 5%"
+          description: "More than 5% of gateway responses are server errors."
+
+      - alert: CheckoutLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(gateway_http_request_seconds_bucket{path="/checkout"}[1m]))) > 0.5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Checkout p95 latency above 500ms"
+          description: "p95 latency of POST /checkout has been above 0.5s for a minute."
+
+      - alert: CheckoutDegraded
+        expr: sum(rate(gateway_checkouts_total{outcome="degraded"}[1m])) > 0
+        for: 15s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Checkouts are succeeding without a delivery promise"
+          description: "promise-service is failing; customers see no delivery date."
+
+      - alert: CheckoutUnavailable
+        expr: sum(rate(gateway_checkouts_total{outcome="unavailable"}[1m])) > 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Checkouts are failing with 503"
+          description: "order-service or inventory-service is unreachable; customers cannot buy."
+
+      - alert: CheckoutRollbackFailed
+        expr: increase(gateway_compensation_failed_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "An order could not be cancelled during checkout rollback"
+          description: "Orphaned order(s) may exist without a stock reservation. Reconcile manually."
