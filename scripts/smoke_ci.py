@@ -3,14 +3,19 @@ import json
 import socket
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
+import uuid
 from datetime import date, timedelta
 from pathlib import Path
 
 GW = "http://127.0.0.1:45004"
 ROOT = Path(__file__).resolve().parent.parent
 failures = 0
+RUN = uuid.uuid4().hex[:8]
+SKU_A = f"SKU-A-{RUN}"
+SKU_B = f"SKU-B-{RUN}"
 
 
 def check(name, ok):
@@ -111,19 +116,33 @@ uid = compose("exec", "-T", "order-service", "id", "-u").stdout.strip()
 check("containers run as non-root (uid 10001)", uid == "10001")
 
 print("\n== Seed stock ==")
-seed = compose("exec", "-T", "inventory-service", "python", "-", stdin=(ROOT / "scripts" / "seed_stock.py").read_text())
-check("stock seeded (SKU-1: 10, SKU-2: 2)", seed.returncode == 0 and seed.stdout.split() == ["200", "200"])
+seed_code = (
+    "import json, urllib.request\n"
+    f"for sku, qty in (({SKU_A!r}, 10), ({SKU_B!r}, 2)):\n"
+    "    req = urllib.request.Request(\n"
+    "        'http://127.0.0.1:45001/stock/' + sku,\n"
+    "        data=json.dumps({'region': 'south', 'on_hand': qty}).encode(),\n"
+    "        headers={'Content-Type': 'application/json'},\n"
+    "        method='PUT',\n"
+    "    )\n"
+    "    print(urllib.request.urlopen(req).status)\n"
+)
+seed = compose("exec", "-T", "inventory-service", "python", "-", stdin=seed_code)
+check(
+    "stock seeded (10 and 2 units of unique test SKUs)",
+    seed.returncode == 0 and seed.stdout.split() == ["200", "200"],
+)
 
 print("\n== Checkout flows ==")
-status, body = api("POST", "/checkout", checkout("SKU-1", 2))
+status, body = api("POST", "/checkout", checkout(SKU_A, 2))
 check("checkout returns 201 with a promise", status == 201 and body["promise"] is not None and body["degraded"] is False)
-key = {"Idempotency-Key": "ci-key-1"}
-s1, a = api("POST", "/checkout", checkout("SKU-1", 1), key)
-s2, b = api("POST", "/checkout", checkout("SKU-1", 1), key)
+key = {"Idempotency-Key": f"ci-key-{RUN}"}
+s1, a = api("POST", "/checkout", checkout(SKU_A, 1), key)
+s2, b = api("POST", "/checkout", checkout(SKU_A, 1), key)
 check("idempotent retry returns the same order", s1 == 201 and s2 == 201 and a["order"]["id"] == b["order"]["id"])
-status, body = api("POST", "/checkout", checkout("SKU-2", 5))
+status, body = api("POST", "/checkout", checkout(SKU_B, 5))
 check("out of stock gives 409 (2 available)", status == 409 and body["detail"]["shortages"][0]["available"] == 2)
-status, _ = api("POST", "/checkout", checkout("SKU-2", 2))
+status, _ = api("POST", "/checkout", checkout(SKU_B, 2))
 check("failed attempt reserved nothing (SKU-2 x2 still succeeds)", status == 201)
 
 print("\n== Returns ==")
@@ -131,8 +150,8 @@ status, body = api(
     "POST",
     "/returns",
     {
-        "order_id": "ORD-CI",
-        "sku": "SKU-1",
+        "order_id": f"ORD-CI-{RUN}",
+        "sku": SKU_A,
         "qty": 2,
         "unit_price_paise": 50000,
         "reason": "CHANGED_MIND",
@@ -144,11 +163,18 @@ check("return created, 10% fee applied (90000 paise)", status == 201 and body["r
 
 print("\n== Resilience ==")
 compose("stop", "promise-service")
-status, body = api("POST", "/checkout", checkout("SKU-1", 1))
+status, body = api("POST", "/checkout", checkout(SKU_A, 1))
 check("promise-service down: checkout degrades gracefully", status == 201 and body["degraded"] is True)
 compose("stop", "inventory-service")
-status, _ = api("POST", "/checkout", checkout("SKU-1", 1))
+status, _ = api("POST", "/checkout", checkout(SKU_A, 1))
 check("inventory-service down: checkout fails cleanly with 503", status == 503)
+
+compose("start", "promise-service", "inventory-service")
+for _ in range(30):
+    status, body = api("GET", "/health/deps")
+    if status == 200 and body and body.get("status") == "ok":
+        break
+    time.sleep(1)
 
 print()
 if failures:
