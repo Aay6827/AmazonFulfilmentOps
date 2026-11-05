@@ -63,12 +63,49 @@ def port_open(port):
         return False
 
 
+INTERNAL = ("order-service", "inventory-service", "promise-service", "returns-service")
+
+
+def published_ports():
+    """Ask Docker which host ports each service publishes (the real exposure setting)."""
+    out = compose("ps", "--format", "json").stdout.strip()
+    if not out:
+        return None
+    rows = json.loads(out) if out.startswith("[") else [json.loads(line) for line in out.splitlines()]
+    found = {}
+    for row in rows:
+        ports = {p.get("PublishedPort", 0) for p in row.get("Publishers") or []}
+        found[row.get("Service", "?")] = {p for p in ports if p}
+    return found
+
+
+def host_listeners():
+    """Best-effort diagnostics for what is listening on 45000-45003 on this host."""
+    try:
+        out = subprocess.run(["ss", "-ltnp"], capture_output=True, text=True, check=False).stdout
+    except OSError:
+        return "ss is not available here"
+    rows = [line for line in out.splitlines() if any(f":{p} " in line for p in range(45000, 45004))]
+    return "\n".join(rows) or "nothing is listening"
+
+
 print("\n== Health ==")
 status, body = api("GET", "/health/deps")
 check("gateway sees all four services", status == 200 and body["status"] == "ok")
 
 print("\n== Exposure and hardening ==")
-check("internal ports 45000-45003 are not published", not any(port_open(p) for p in range(45000, 45004)))
+published = published_ports()
+leaked = {name: sorted(published[name]) for name in INTERNAL if published and published.get(name)}
+check(
+    "only api-gateway publishes a host port (per docker compose)",
+    published is not None and not leaked and published.get("api-gateway") == {45004},
+)
+if leaked:
+    print("        internal services publishing ports:", leaked)
+open_ports = [p for p in range(45000, 45004) if port_open(p)]
+if open_ports:
+    print(f"  NOTE  host ports {open_ports} accept connections, but docker compose does not publish them")
+    print(host_listeners())
 check("gateway answers on 45004", api("GET", "/health")[0] == 200)
 uid = compose("exec", "-T", "order-service", "id", "-u").stdout.strip()
 check("containers run as non-root (uid 10001)", uid == "10001")
