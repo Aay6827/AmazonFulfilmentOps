@@ -9,7 +9,7 @@
 
 Two failures were injected by stopping containers under load: promise-service (an optional dependency) and then inventory-service (a critical one).
 
-Detection worked. Both outages raised alerts within 22 to 32 seconds and the checkout rollback logic was exact. The optional-dependency outage did not block purchases, but it made checkout slower than the critical-dependency outage did: peak p95 latency was 9.25 s, against 0.08 s at baseline.
+Detection worked. Both outages raised alerts within 22 to 32 seconds and the checkout rollback logic was exact. The optional-dependency outage did not block purchases, but it made checkout very slow: peak p95 latency was 9.25 s, against 0.08 s at baseline.
 
 The drill also exposed a data-integrity defect that no alert caught. inventory-service keeps stock and reservations in memory. After it restarted it came back empty: 585 of the 800 live orders (73%) no longer had a stock reservation, and for about 16 seconds every checkout was rejected as out of stock while the service reported healthy.
 
@@ -73,7 +73,7 @@ Why it was not detected:
 - There is no alert on restarts, on the out-of-stock ratio, or on order/reservation mismatch.
 - The false out-of-stock window lasted about 16 seconds, shorter than the 1-minute rate windows the alerts use. Detection alone cannot reliably catch this, so the fix has to include prevention.
 
-### 2. A failing dependency makes checkout slow, and the optional dependency hurt most (severity: high)
+### 2. A failing dependency makes checkout slow (severity: high)
 
 Evidence from Prometheus (30 s rate windows, see the latency evidence section below):
 
@@ -81,11 +81,11 @@ Evidence from Prometheus (30 s rate windows, see the latency evidence section be
 - promise-service down (optional dependency): peak mean 4.52 s, peak p95 9.25 s.
 - inventory-service down (critical dependency): peak mean 2.31 s, peak p95 3.62 s.
 
-Checkouts kept succeeding when promise-service was down, but a customer waiting 4 to 9 seconds for a response would not call that graceful. The outage of the optional dependency was slower than the outage of the critical one, which is the opposite of what the design intends.
+Checkouts kept succeeding when promise-service was down, but a customer waiting 4 to 9 seconds for a response would not call that graceful. With one run per incident and lookup stalls that vary from call to call (4.0 s and 7.86 s in the probe below), the ordering between the two incidents is indicative only. The robust finding is that both failures are slow, including the one on a dependency the design treats as optional.
 
 The CheckoutLatencyP95High alert (p95 above 0.5 s for 1 minute) did fire, so the slowdown was detected. The drill did not record how long it took to fire.
 
-Latencies above the gateway's 2 s timeout mean that timeout does not bound the whole call. Likely cause, not yet verified: httpx applies its timeout to the connect, read and write phases, but not to name resolution, and Docker removes a stopped container's name, so the lookup may stall for several seconds before failing. The same stall would explain the one generator request that exceeded its own 5 s timeout. A check is to time a request to the stopped service's hostname from inside the gateway container.
+Latencies above the gateway's 2 s timeout mean that timeout does not bound the whole call. Cause (verified): httpx applies its timeout to the connect, read and write phases, not to name resolution, and Docker removes a stopped container's hostname, so the lookup stalls before failing. Timing a request to the stopped promise-service from inside the gateway container gave a raw DNS lookup failure after 7.86 s and an httpx call failure after 4.0 s, against a configured timeout of 2.0 s. The stall length varies per lookup. This is consistent with the drill (peak mean 4.52 s, peak p95 9.25 s) and with the one generator request that exceeded its own 5 s timeout.
 
 The generator-side figures (about 2.9 s and 2.0 s per request, from throughput) were averages over each whole phase and understate these peaks. Because the generator is closed-loop, real open-loop traffic would see requests queue up and the impact would be larger.
 
