@@ -98,7 +98,7 @@ The generator-side figures (about 2.9 s and 2.0 s per request, from throughput) 
 
 | Priority | Action | How we will know it is fixed |
 |---|---|---|
-| P1 | Persist inventory and order state in a database instead of process memory (PostgreSQL locally, RDS in Terraform) | Re-run the drill: `orders_without_reservation` is 0 after the inventory restart |
+| P1 | Persist state in a database instead of process memory. DONE for inventory-service (PostgreSQL; run 2 shows 0 orders without a reservation). OPEN for order-service, which is still in-memory (see follow-up), and RDS in Terraform | Run 2 for inventory-service; a drill that restarts order-service and finds no orphaned reservations |
 | P1 | Add a reconciliation check comparing live orders with reservations; alert when they differ | The drill's derived metric becomes a standing alert |
 | P1 | Alert on service restarts (`changes(process_start_time_seconds[10m]) > 0`) | Alert fires within one scrape of a restart |
 | P1 | Alert on out-of-stock ratio spikes (for example above 50% of checkouts over 1 minute; tune to the real baseline) | Fires during a repeat of the empty-inventory scenario |
@@ -116,6 +116,54 @@ This was a drill on a local stack with synthetic traffic and in-memory services,
 |---|---|---|
 | Baseline (before incident 1) | 0.03s | 0.08s |
 | Incident 1 (promise-service down) | 4.52s | 9.25s |
+| Incident 2 (inventory-service down) | 2.31s | 3.62s |
+
+CheckoutLatencyP95High (threshold 0.5 s for 1 minute) during the drill: firing, pending.
+process_start_time_seconds is exported by 6 scrape targets, so a restart alert based on it is possible.
+
+## Follow-up: PostgreSQL persistence (run 2, 2026-11-07)
+
+inventory-service now stores stock and reservations in PostgreSQL. Reservations are claimed with an insert that ignores duplicates, stock rows are locked in sorted order, and database constraints back up the application checks. The drill was re-run on a fresh stack with the same scenarios; the first run's results are kept in `docs/drill-results-before.json`.
+
+| Metric | Run 1 (in-memory) | Run 2 (PostgreSQL) |
+|---|---|---|
+| Live orders | 800 | 853 |
+| Active reservations in inventory | 215 | 853 |
+| Orders without a reservation | 585 | 0 |
+| Probe checkout right after the inventory restart | HTTP 409 | HTTP 201 |
+| Load requests rejected as out of stock after the restart | 78 of 80 (98%) | 8 of 80 (10%) |
+| Checkout rollbacks exact | yes | yes (139 cancelled = 100 out-of-stock + 39 unavailable) |
+
+Reading the table:
+
+- The 8 rejections in run 2 are the deliberate out-of-stock requests, which are about 10% of the generated traffic, as in the baseline phases. Run 1's 78 were false rejections caused by the empty inventory.
+- Run 2 made 318 reservations after the restart (the counter resets with the process); 853 - 318 = 535 reservations made before the restart were still present afterwards. This is derived, not measured directly.
+
+Alert timing in the two runs, seconds after the failure was injected:
+
+| Alert | Run 1 | Run 2 |
+|---|---|---|
+| ServiceDown (promise-service) | 28.2 | 28.2 |
+| CheckoutDegraded | 32.3 | 28.2 |
+| ServiceDown (inventory-service) | 22.2 | 26.1 |
+| CheckoutUnavailable | 28.2 | 32.1 |
+| GatewayHighErrorRate | 58.4 | 62.3 |
+
+The two runs agree to within about 4 seconds, which gives a rough sense of run-to-run variance.
+
+Not changed by this fix, and visible in run 2: checkout is still slow while a dependency is down. The generator completed 15 requests during incident 1 and 38 during incident 2, against about 5 per second normally. The gateway deadline and circuit breaker are still open.
+
+### Remaining gaps
+
+- order-service is still in-memory. If it restarts, orders disappear but their reservations remain in PostgreSQL, so stock is held for orders that no longer exist.
+- The drill restarts services but never takes PostgreSQL itself down, so a database outage is untested.
+
+## Latency evidence, run 2 (PostgreSQL)
+
+| Window | Peak mean checkout latency | Peak p95 checkout latency |
+|---|---|---|
+| Baseline (before incident 1) | 0.03s | 0.05s |
+| Incident 1 (promise-service down) | 3.90s | 4.88s |
 | Incident 2 (inventory-service down) | 2.31s | 3.62s |
 
 CheckoutLatencyP95High (threshold 0.5 s for 1 minute) during the drill: firing, pending.

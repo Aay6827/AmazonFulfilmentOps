@@ -1,6 +1,7 @@
 """Query Prometheus for latency and alert evidence about the drill, and append it to the report."""
 import json
 import math
+import sys
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
@@ -9,6 +10,7 @@ from pathlib import Path
 PROM = "http://127.0.0.1:45090"
 ROOT = Path(__file__).resolve().parent.parent
 REPORT = ROOT / "docs" / "incident-report.md"
+HEADING = sys.argv[1] if len(sys.argv) > 1 else "Latency evidence (queried from Prometheus)"
 events = json.loads((ROOT / "docs" / "drill-results.json").read_text())["events"]
 
 first = events[0]
@@ -77,7 +79,7 @@ windows = {
 
 lines = [
     "",
-    "## Latency evidence (queried from Prometheus)",
+    f"## {HEADING}",
     "",
     "| Window | Peak mean checkout latency | Peak p95 checkout latency |",
     "|---|---|---|",
@@ -106,7 +108,7 @@ lines.append(
 )
 
 text = REPORT.read_text()
-marker = text.find("\n## Latency evidence")
+marker = text.find("\n## " + HEADING)
 if marker != -1:
     text = text[:marker]
 REPORT.write_text(text.rstrip() + "\n" + "\n".join(lines) + "\n")
