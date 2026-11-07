@@ -40,3 +40,10 @@ class OrderStore:
             raise ValueError("order cannot be cancelled")
         order.status = OrderStatus.CANCELLED
         return order
+
+    def ping(self) -> bool:
+        return True
+
+    def stats(self) -> dict:
+        live = sum(1 for o in self._orders.values() if o.status == OrderStatus.CREATED)
+        return {"live_orders": live, "cancelled_orders": len(self._orders) - live}

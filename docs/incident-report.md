@@ -9,7 +9,7 @@
 
 Two failures were injected by stopping containers under load: promise-service (an optional dependency) and then inventory-service (a critical one).
 
-Detection worked. Both outages raised alerts within 22 to 32 seconds and the checkout rollback logic was exact. The optional-dependency outage did not block purchases, but it made checkout very slow: peak p95 latency was 9.25 s, against 0.08 s at baseline.
+Detection worked. Both outages raised alerts within 22 to 32 seconds and the checkout rollback logic was exact. The optional-dependency outage did not block purchases, but it made checkout very slow: peak p95 latency was 9.25 s in run 1 and 4.88 s in run 2, against 0.08 s and 0.05 s at baseline.
 
 The drill also exposed a data-integrity defect that no alert caught. inventory-service keeps stock and reservations in memory. After it restarted it came back empty: 585 of the 800 live orders (73%) no longer had a stock reservation, and for about 16 seconds every checkout was rejected as out of stock while the service reported healthy.
 
@@ -20,7 +20,7 @@ The drill also exposed a data-integrity defect that no alert caught. inventory-s
 | Outage length | 44.7 s | 70.8 s |
 | First alert | ServiceDown at 28.2 s | ServiceDown at 22.2 s |
 | Other alerts | CheckoutDegraded at 32.3 s | CheckoutUnavailable at 28.2 s, GatewayHighErrorRate at 58.4 s |
-| Customer symptom | Checkouts succeeded without a delivery date (13 counted as degraded over the drill) but slowly: peak p95 9.25 s | 35 checkouts failed with HTTP 503 (33 during the outage, 2 while the container was starting) |
+| Customer symptom | Checkouts succeeded without a delivery date (13 counted as degraded over the drill) but slowly: peak p95 9.25 s in run 1, 4.88 s in run 2 | 35 checkouts failed with HTTP 503 (33 during the outage, 2 while the container was starting) |
 | Healthy after restart | 1.1 s | 2.1 s |
 | Alerts cleared after restart | ServiceDown 13.2 s, CheckoutDegraded 67.4 s | ServiceDown 32.7 s, GatewayHighErrorRate 46.8 s, CheckoutUnavailable 66.9 s |
 | Data integrity | No loss | 585 reservations lost (see root cause 1) |
@@ -75,7 +75,7 @@ Why it was not detected:
 
 ### 2. A failing dependency makes checkout slow (severity: high)
 
-Evidence from Prometheus (30 s rate windows, see the latency evidence section below):
+Evidence from Prometheus, run 1 (30 s rate windows; run 2 is in the latency evidence section at the end of this report):
 
 - Baseline: mean 0.03 s, p95 0.08 s.
 - promise-service down (optional dependency): peak mean 4.52 s, peak p95 9.25 s.
@@ -168,3 +168,5 @@ Not changed by this fix, and visible in run 2: checkout is still slow while a de
 
 CheckoutLatencyP95High (threshold 0.5 s for 1 minute) during the drill: firing, pending.
 process_start_time_seconds is exported by 6 scrape targets, so a restart alert based on it is possible.
+
+Reading run 2: incident 1 peaked at a p95 of 4.88 s against 9.25 s in run 1, so single-run peaks differ by about 2x and the stall length clearly varies from run to run. Incident 2's figures (mean 2.31 s, p95 3.62 s) are identical to run 1's to two decimals. The baseline and incident 1 rows differ between the runs, and the monitoring volume was recreated between them, so the query is not reading the same data. The match is most likely coincidence from the closed-loop generator and histogram bucket interpolation, which is an unverified explanation.

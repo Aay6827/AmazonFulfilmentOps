@@ -22,6 +22,7 @@ services:
       POSTGRES_DB: inventory
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fulfilment -d inventory"]
       interval: 5s
@@ -35,6 +36,11 @@ services:
       context: ./services/order-service
       args:
         PORT: "45000"
+    environment:
+      DATABASE_URL: postgresql://fulfilment:${POSTGRES_PASSWORD:-dev-only-password}@postgres:5432/orders
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   inventory-service:
     <<: *defaults

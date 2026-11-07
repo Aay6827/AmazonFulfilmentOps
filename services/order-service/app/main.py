@@ -1,3 +1,4 @@
+import os
 import time
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
@@ -7,7 +8,18 @@ from .models import Order, OrderCreate
 from .store import OrderStore
 
 app = FastAPI(title="order-service", version="0.1.0")
-store = OrderStore()
+
+
+def make_store():
+    dsn = os.getenv("DATABASE_URL")
+    if dsn:
+        from .pg_store import PgOrderStore
+
+        return PgOrderStore(dsn)
+    return OrderStore()
+
+
+store = make_store()
 
 REQUESTS = Counter(
     "order_http_requests_total", "HTTP requests", ["method", "path", "status"]
@@ -30,12 +42,19 @@ async def metrics_middleware(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
+    if not store.ping():
+        raise HTTPException(status_code=503, detail="database unavailable")
     return {"status": "ok", "service": "order-service"}
 
 
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/stats")
+def stats() -> dict:
+    return store.stats()
 
 
 @app.post("/orders", response_model=Order, status_code=201)
