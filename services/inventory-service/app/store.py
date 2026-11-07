@@ -93,3 +93,17 @@ class InventoryStore:
                 self._stock[(item.sku, reservation.region)]["reserved"] -= item.qty
             reservation.status = ReservationStatus.RELEASED
             return reservation
+
+    def ping(self) -> bool:
+        return True
+
+    def stats(self) -> dict:
+        with self._lock:
+            active = sum(
+                1 for r in self._reservations.values() if r.status == ReservationStatus.RESERVED
+            )
+            return {
+                "active_reservations": active,
+                "released_reservations": len(self._reservations) - active,
+                "stock_records": len(self._stock),
+            }

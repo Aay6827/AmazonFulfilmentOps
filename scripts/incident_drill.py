@@ -162,6 +162,17 @@ def incident(load, phase, service, wanted, fire_timeout):
     }
 
 
+def inventory_stats():
+    code = (
+        "import urllib.request; "
+        "print(urllib.request.urlopen('http://127.0.0.1:45001/stats', timeout=5).read().decode())"
+    )
+    out = compose("exec", "-T", "inventory-service", "python", "-c", code)
+    if out.returncode != 0:
+        raise SystemExit("could not read inventory stats: " + out.stderr)
+    return json.loads(out.stdout)
+
+
 def main():
     if prom("sum(up)") is None:
         sys.exit("Prometheus is not reachable on 45090. Start the monitoring stack first.")
@@ -234,9 +245,7 @@ def main():
     }
     if all(v is not None for v in final.values()):
         live_orders = final["orders_created"] - final["orders_cancelled"]
-        live_reservations = (
-            final["inventory_reserved_since_restart"] - final["inventory_released_since_restart"]
-        )
+        live_reservations = inventory_stats()["active_reservations"]
         final["derived"] = {
             "rollbacks_exact": abs(
                 final["orders_cancelled"]
@@ -244,7 +253,7 @@ def main():
             )
             < 0.5,
             "live_orders": live_orders,
-            "live_reservations_after_restart": live_reservations,
+            "active_reservations_in_inventory": live_reservations,
             "orders_without_reservation": live_orders - live_reservations,
         }
     results["final_metrics"] = final

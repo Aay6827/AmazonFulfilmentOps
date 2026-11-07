@@ -1,3 +1,4 @@
+import os
 import time
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -7,7 +8,18 @@ from .models import Reservation, ReserveRequest, StockSet, StockView
 from .store import InsufficientStock, InventoryStore
 
 app = FastAPI(title="inventory-service", version="0.1.0")
-store = InventoryStore()
+
+
+def make_store():
+    dsn = os.getenv("DATABASE_URL")
+    if dsn:
+        from .pg_store import PgStore
+
+        return PgStore(dsn)
+    return InventoryStore()
+
+
+store = make_store()
 
 REQUESTS = Counter(
     "inventory_http_requests_total", "HTTP requests", ["method", "path", "status"]
@@ -33,12 +45,19 @@ async def metrics_middleware(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
+    if not store.ping():
+        raise HTTPException(status_code=503, detail="database unavailable")
     return {"status": "ok", "service": "inventory-service"}
 
 
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+@app.get("/stats")
+def stats() -> dict:
+    return store.stats()
 
 
 @app.put("/stock/{sku}", response_model=StockView)
