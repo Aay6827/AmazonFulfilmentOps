@@ -219,7 +219,29 @@ The probe is `scripts/orphan_probe.py`. It exits non-zero if orders are lost or 
 
 | Priority | Action | How we will know it is fixed |
 |---|---|---|
-| P1 | Add a DatabaseUnreachable alert: expose a `db_up` gauge evaluated at scrape time in both services and alert after 15 s | Repeat the PostgreSQL outage: the alert fires before CheckoutUnavailable |
-| P1 | Add a ServiceRestarted alert based on `changes(process_start_time_seconds[10m]) > 0` | A quick restart (about 2 s) raises it; in this drill ServiceDown only fired because the service stayed stopped for 45 s |
+| P1 | DONE: DatabaseUnreachable alert on a `db_up` gauge in both database-backed services | Run 4: fired 18.1 s (order-service) and 28.2 s (inventory-service) after PostgreSQL stopped |
+| P1 | DONE: ServiceRestarted alert on process start time | Run 4: fired 12.1 s after a 2 s quick restart of inventory-service; ServiceDown stayed silent |
 | P2 | Separate PostgreSQL instances per service (or a managed instance with a replica) and add a reconciliation job that finds orders without reservations | An outage drill that checks reconciliation directly |
 | P2 | Pause the load before taking the reconciliation snapshots | Mid-run snapshots agree exactly |
+
+## Follow-up: detection alerts (run 4, 2026-11-08)
+
+Two alerts were added after run 3. `DatabaseUnreachable` uses a `db_up` gauge evaluated at scrape time in order-service and inventory-service and fires after 15 s at 0. `ServiceRestarted` fires when `process_start_time_seconds` changes within 10 minutes. `scripts/alert_check.py` took PostgreSQL down under load, then did a quick restart of inventory-service. Raw data: `docs/alert-check.json`.
+
+| | Run 3 (before the new alerts) | Run 4 (with the new alerts) |
+|---|---|---|
+| First alert after PostgreSQL stopped | CheckoutUnavailable at 28.2 s | DatabaseUnreachable (order-service) at 18.1 s |
+| Other alerts | GatewayHighErrorRate at 62.3 s | DatabaseUnreachable (inventory-service) 28.2 s, CheckoutUnavailable 38.2 s (GatewayHighErrorRate was not watched in this run) |
+| Outage length | 81.0 s | 50.6 s |
+| First alert names the failing dependency | no | yes |
+| Alerts cleared after PostgreSQL restarted | GatewayHighErrorRate 66.0 s, CheckoutUnavailable 82.1 s | DatabaseUnreachable 8.5 s and 12.5 s, CheckoutUnavailable 62.8 s |
+| First successful checkout after PostgreSQL restarted | 15.7 s | 0.4 s |
+
+### Findings
+
+- The first alert arrived 10 s earlier than run 3's first alert (18.1 s against 28.2 s) and names the database. The script prints that DatabaseUnreachable fired 20.1 s before CheckoutUnavailable, but that compares against a CheckoutUnavailable that was itself 10 s slower than in run 3 (38.2 s against 28.2 s), so a fairer figure is about 10 s. With one run each this is indicative only.
+- The two services fired 10 s apart (18.1 s and 28.2 s) with identical configuration. The reason is not known, so this alert's timing should be read as about plus or minus 10 s.
+- Not tested: whether DatabaseUnreachable fires with no customer traffic at all, which is its purpose. The load generator ran throughout this check.
+- A quick restart is now visible: ServiceRestarted fired 12.1 s after restarting inventory-service, and ServiceDown did not fire.
+- ServiceRestarted stays active for 10 minutes after each restart by design, so drills raise it. It suits a notification or ticket, not a page.
+- Recovery after PostgreSQL restarted varied from 15.7 s (run 3, after an 81 s outage) to 0.4 s (run 4, after a 51 s outage). The runs differ in outage length and nothing here separates database startup from the connection pool reconnecting, so recovery time should be treated as unstable. Both figures are measured from the moment `docker compose start postgres` returned.
