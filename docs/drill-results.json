@@ -3,14 +3,14 @@
     "incident_1_promise_service_down": {
       "service": "promise-service",
       "detected_after_s": {
-        "ServiceDown(promise-service)": 28.2,
-        "CheckoutDegraded": 28.2
+        "ServiceDown(promise-service)": 26.2,
+        "CheckoutDegraded": 32.2
       },
       "not_fired": [],
       "healthy_after_s": 2.1,
       "resolved_after_s": {
-        "ServiceDown(promise-service)": 6.1,
-        "CheckoutDegraded": 72.4
+        "ServiceDown(promise-service)": 12.2,
+        "CheckoutDegraded": 72.6
       }
     },
     "incident_2_inventory_service_down": {
@@ -18,32 +18,32 @@
       "detected_after_s": {
         "ServiceDown(inventory-service)": 26.1,
         "CheckoutUnavailable": 32.1,
-        "GatewayHighErrorRate": 62.3
+        "GatewayHighErrorRate": 46.2
       },
       "not_fired": [],
-      "healthy_after_s": 2.1,
+      "healthy_after_s": 2.2,
       "probe_status_before_reseed": 201,
       "resolved_after_s": {
         "ServiceDown(inventory-service)": 33.0,
-        "GatewayHighErrorRate": 51.1,
+        "GatewayHighErrorRate": 67.1,
         "CheckoutUnavailable": 71.2
       }
     }
   },
   "final_metrics": {
-    "orders_created": 992.0,
-    "orders_cancelled": 139.0,
-    "checkouts_success": 841.0,
-    "checkouts_degraded": 12.0,
-    "checkouts_out_of_stock": 100.0,
-    "checkouts_unavailable": 39.0,
+    "orders_created": 1169.0,
+    "orders_cancelled": 129.0,
+    "checkouts_success": 836.0,
+    "checkouts_degraded": 204.0,
+    "checkouts_out_of_stock": 121.0,
+    "checkouts_unavailable": 267.0,
     "compensation_failed": 0.0,
-    "inventory_reserved_since_restart": 318.0,
+    "inventory_reserved_since_restart": 314.0,
     "inventory_released_since_restart": 0.0,
     "derived": {
-      "rollbacks_exact": true,
-      "live_orders": 853.0,
-      "active_reservations_in_inventory": 853,
+      "rollbacks_exact": false,
+      "live_orders": 1040.0,
+      "active_reservations_in_inventory": 1040,
       "orders_without_reservation": 0.0
     }
   },
@@ -52,126 +52,126 @@
       "201": 1
     },
     "baseline": {
-      "201": 139,
-      "409": 9
+      "201": 135,
+      "409": 13
     },
     "promise_down": {
-      "201": 14,
-      "409": 1
+      "201": 194,
+      "409": 19
     },
     "promise_recovery": {
-      "201": 314,
-      "409": 43
+      "201": 330,
+      "409": 41
     },
     "baseline_2": {
-      "201": 65,
-      "409": 9
+      "201": 64,
+      "409": 10
     },
     "inventory_down": {
       "201": 2,
-      "503": 36
+      "503": 258
     },
     "inventory_restarted_unseeded": {
-      "201": 69,
+      "201": 66,
       "409": 8,
-      "503": 3
+      "503": 9
     },
     "reseeded": {
-      "201": 248,
+      "201": 247,
       "409": 30
     }
   },
   "events": [
     {
-      "t_seconds": 0.9,
-      "clock": "12:32:49",
+      "t_seconds": 1.0,
+      "clock": "14:33:31",
       "event": "baseline traffic (30s)"
     },
     {
-      "t_seconds": 31.8,
-      "clock": "12:33:20",
+      "t_seconds": 31.7,
+      "clock": "14:34:01",
       "event": "INJECTED: promise-service stopped"
     },
     {
-      "t_seconds": 60.0,
-      "clock": "12:33:48",
-      "event": "ALERT FIRING   ServiceDown(promise-service) after 28.2s"
+      "t_seconds": 57.9,
+      "clock": "14:34:28",
+      "event": "ALERT FIRING   ServiceDown(promise-service) after 26.2s"
     },
     {
-      "t_seconds": 60.0,
-      "clock": "12:33:48",
-      "event": "ALERT FIRING   CheckoutDegraded after 28.2s"
+      "t_seconds": 63.9,
+      "clock": "14:34:34",
+      "event": "ALERT FIRING   CheckoutDegraded after 32.2s"
     },
     {
-      "t_seconds": 72.5,
-      "clock": "12:34:01",
+      "t_seconds": 76.5,
+      "clock": "14:34:46",
       "event": "RECOVERY: promise-service started"
     },
     {
-      "t_seconds": 78.6,
-      "clock": "12:34:07",
-      "event": "ALERT RESOLVED ServiceDown(promise-service) after 6.1s"
+      "t_seconds": 88.7,
+      "clock": "14:34:58",
+      "event": "ALERT RESOLVED ServiceDown(promise-service) after 12.2s"
     },
     {
-      "t_seconds": 144.9,
-      "clock": "12:35:13",
-      "event": "ALERT RESOLVED CheckoutDegraded after 72.4s"
+      "t_seconds": 149.0,
+      "clock": "14:35:59",
+      "event": "ALERT RESOLVED CheckoutDegraded after 72.6s"
     },
     {
-      "t_seconds": 146.9,
-      "clock": "12:35:15",
+      "t_seconds": 151.0,
+      "clock": "14:36:01",
       "event": "steady state (15s)"
     },
     {
-      "t_seconds": 163.1,
-      "clock": "12:35:31",
+      "t_seconds": 166.9,
+      "clock": "14:36:17",
       "event": "INJECTED: inventory-service stopped"
     },
     {
-      "t_seconds": 189.2,
-      "clock": "12:35:58",
+      "t_seconds": 193.0,
+      "clock": "14:36:43",
       "event": "ALERT FIRING   ServiceDown(inventory-service) after 26.1s"
     },
     {
-      "t_seconds": 195.3,
-      "clock": "12:36:04",
+      "t_seconds": 199.0,
+      "clock": "14:36:49",
       "event": "ALERT FIRING   CheckoutUnavailable after 32.1s"
     },
     {
-      "t_seconds": 225.4,
-      "clock": "12:36:34",
-      "event": "ALERT FIRING   GatewayHighErrorRate after 62.3s"
+      "t_seconds": 213.1,
+      "clock": "14:37:03",
+      "event": "ALERT FIRING   GatewayHighErrorRate after 46.2s"
     },
     {
-      "t_seconds": 238.4,
-      "clock": "12:36:47",
+      "t_seconds": 226.2,
+      "clock": "14:37:16",
       "event": "RECOVERY: inventory-service started (in-memory state is gone)"
     },
     {
-      "t_seconds": 255.6,
-      "clock": "12:37:04",
+      "t_seconds": 243.4,
+      "clock": "14:37:33",
       "event": "probe checkout before reseeding returned HTTP 201"
     },
     {
-      "t_seconds": 256.4,
-      "clock": "12:37:05",
+      "t_seconds": 244.1,
+      "clock": "14:37:34",
       "event": "stock reseeded"
     },
     {
-      "t_seconds": 271.4,
-      "clock": "12:37:20",
+      "t_seconds": 259.1,
+      "clock": "14:37:49",
       "event": "ALERT RESOLVED ServiceDown(inventory-service) after 33.0s"
     },
     {
-      "t_seconds": 289.5,
-      "clock": "12:37:38",
-      "event": "ALERT RESOLVED GatewayHighErrorRate after 51.1s"
+      "t_seconds": 293.3,
+      "clock": "14:38:23",
+      "event": "ALERT RESOLVED GatewayHighErrorRate after 67.1s"
     },
     {
-      "t_seconds": 309.6,
-      "clock": "12:37:58",
+      "t_seconds": 297.3,
+      "clock": "14:38:27",
       "event": "ALERT RESOLVED CheckoutUnavailable after 71.2s"
     }
   ],
-  "total_seconds": 321.7
+  "total_seconds": 310.8
 }

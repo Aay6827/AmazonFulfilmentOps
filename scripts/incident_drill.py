@@ -247,9 +247,8 @@ def main():
         live_orders = final["orders_created"] - final["orders_cancelled"]
         live_reservations = inventory_stats()["active_reservations"]
         final["derived"] = {
-            "rollbacks_exact": abs(
-                final["orders_cancelled"]
-                - (final["checkouts_out_of_stock"] + final["checkouts_unavailable"])
+            "no_phantom_orders": abs(
+                live_orders - (final["checkouts_success"] + final["checkouts_degraded"])
             )
             < 0.5,
             "live_orders": live_orders,

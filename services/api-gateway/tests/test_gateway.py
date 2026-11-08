@@ -1,4 +1,5 @@
 import json
+import time
 
 import httpx
 import pytest
@@ -21,12 +22,15 @@ class World:
         self.orders = {}
         self.reservations = set()
         self.order_headers = []
+        self.delays = {}
 
     def transport(self, service):
         def handler(request):
             self.calls.append((service, request.method, request.url.path))
             if service in self.down:
                 raise httpx.ConnectError("down", request=request)
+            if self.delays.get(service):
+                time.sleep(self.delays[service])
             if request.url.path == "/health":
                 return httpx.Response(200, json={"status": "ok"})
             return getattr(self, f"_{service}")(request)
@@ -109,6 +113,7 @@ class World:
 def world():
     w = World()
     main.clients = build({name: w.transport(name) for name in SERVICES})
+    main.reset_guards()
     yield w
 
 
@@ -249,3 +254,66 @@ def test_metrics_endpoint(world):
     text = client.get("/metrics").text
     assert "gateway_checkouts_total" in text
     assert "gateway_downstream_calls_total" in text
+
+
+def test_slow_optional_dependency_cannot_stall_checkout(world, monkeypatch):
+    monkeypatch.setitem(main.BUDGETS, "promise", 0.1)
+    world.delays["promise"] = 0.6
+    started = time.monotonic()
+    r = checkout()
+    elapsed = time.monotonic() - started
+    assert r.status_code == 201
+    assert r.json()["degraded"] is True
+    assert elapsed < 0.5
+
+
+def test_circuit_opens_and_skips_the_failing_optional_dependency(world, monkeypatch):
+    monkeypatch.setitem(main.BUDGETS, "promise", 0.05)
+    world.delays["promise"] = 0.3
+    for _ in range(3):
+        assert checkout().status_code == 201
+    assert main.guards["promise"].breaker.state() == "open"
+    before = world.services_called().count("promise")
+    started = time.monotonic()
+    r = checkout()
+    assert r.status_code == 201
+    assert r.json()["degraded"] is True
+    assert time.monotonic() - started < 0.2
+    assert world.services_called().count("promise") == before
+
+
+def test_critical_outage_fails_fast_once_the_circuit_is_open(world):
+    world.down.add("inventory")
+    for _ in range(3):
+        assert checkout().status_code == 503
+    assert main.guards["inventory"].breaker.state() == "open"
+    orders_before = len(world.orders)
+    r = checkout()
+    assert r.status_code == 503
+    assert "inventory" in r.json()["detail"]
+    assert len(world.orders) == orders_before
+
+
+def test_circuit_recovers_after_the_dependency_returns(world):
+    main.guards["inventory"] = main.Guard(main.CircuitBreaker(3, 0.2), 8)
+    world.down.add("inventory")
+    for _ in range(3):
+        assert checkout().status_code == 503
+    assert main.guards["inventory"].breaker.state() == "open"
+    world.down.discard("inventory")
+    time.sleep(0.25)
+    assert checkout().status_code == 201
+    assert main.guards["inventory"].breaker.state() == "closed"
+
+
+def test_health_deps_reports_circuit_state_and_bypasses_the_breaker(world):
+    world.down.add("promise")
+    for _ in range(3):
+        checkout()
+    body = client.get("/health/deps").json()
+    assert body["circuits"]["promise"] == "open"
+    assert body["services"]["promise"] == "down"
+    world.down.discard("promise")
+    body = client.get("/health/deps").json()
+    assert body["services"]["promise"] == "up"
+    assert body["circuits"]["promise"] == "closed"

@@ -102,7 +102,7 @@ The generator-side figures (about 2.9 s and 2.0 s per request, from throughput) 
 | P1 | Add a reconciliation check comparing live orders with reservations; alert when they differ | The drill's derived metric becomes a standing alert |
 | P1 | Alert on service restarts (`changes(process_start_time_seconds[10m]) > 0`) | Alert fires within one scrape of a restart |
 | P1 | Alert on out-of-stock ratio spikes (for example above 50% of checkouts over 1 minute; tune to the real baseline) | Fires during a repeat of the empty-inventory scenario |
-| P1 | Bound total checkout time: add an overall deadline per request, make the optional promise-service call fail fast (short total timeout, skipped while it keeps failing), and add a circuit breaker for all downstream calls | Re-run the drill: incident 1 peak p95 stays under 0.5 s and incident 2 fails fast |
+| P1 | DONE: per-call deadlines enforced outside httpx, circuit breakers, load shedding and an up-front rejection when inventory's circuit is open | Run 5: peak p95 checkout latency 0.06 s in both incidents, CheckoutLatencyP95High never fired |
 | P2 | Shorten the CheckoutDegraded rate window so it clears sooner after recovery | Clears within about 30 s of recovery |
 | P3 | Repeat the drill with open-loop load (k6) to measure real queueing impact and variance across runs | Results reproduced across several runs |
 
@@ -245,3 +245,39 @@ Two alerts were added after run 3. `DatabaseUnreachable` uses a `db_up` gauge ev
 - A quick restart is now visible: ServiceRestarted fired 12.1 s after restarting inventory-service, and ServiceDown did not fire.
 - ServiceRestarted stays active for 10 minutes after each restart by design, so drills raise it. It suits a notification or ticket, not a page.
 - Recovery after PostgreSQL restarted varied from 15.7 s (run 3, after an 81 s outage) to 0.4 s (run 4, after a 51 s outage). The runs differ in outage length and nothing here separates database startup from the connection pool reconnecting, so recovery time should be treated as unstable. Both figures are measured from the moment `docker compose start postgres` returned.
+
+## Latency evidence, run 5 (circuit breaker and deadlines)
+
+| Window | Peak mean checkout latency | Peak p95 checkout latency |
+|---|---|---|
+| Baseline (before incident 1) | 0.04s | 0.06s |
+| Incident 1 (promise-service down) | 0.05s | 0.06s |
+| Incident 2 (inventory-service down) | 0.04s | 0.06s |
+
+CheckoutLatencyP95High (threshold 0.5 s for 1 minute) during the drill: never pending or firing.
+process_start_time_seconds is exported by 6 scrape targets, so a restart alert based on it is possible.
+
+## Follow-up: gateway deadlines and circuit breaker (run 5, 2026-11-08)
+
+The gateway now runs every downstream call in a bounded thread pool and abandons it after a budget (1.5 s for order, inventory and returns; 0.5 s for the optional promise call; 3 s for a whole checkout), so a stalled name lookup can no longer hold a request. Each dependency has a circuit breaker (opens after 3 consecutive failures, retries after 10 s) and at most 16 calls in flight. When inventory's circuit is open, checkout is rejected before an order is created. `/health/deps` bypasses the breaker and reports each circuit's state; `gateway_circuit_state` is exported as a gauge. The first drill's two incidents were re-run unchanged on a fresh stack. Raw data: `docs/drill-results.json` (the PostgreSQL run is kept in `docs/drill-results-run2.json`).
+
+| | Run 1 | Run 2 | Run 5 |
+|---|---|---|---|
+| Incident 1 (promise-service down), peak mean / p95 checkout latency | 4.52 s / 9.25 s | 3.90 s / 4.88 s | 0.05 s / 0.06 s |
+| Incident 2 (inventory-service down), peak mean / p95 | 2.31 s / 3.62 s | 2.31 s / 3.62 s | 0.04 s / 0.06 s |
+| Baseline, peak mean / p95 | 0.03 s / 0.08 s | 0.03 s / 0.05 s | 0.04 s / 0.06 s |
+| Load requests completed during incident 1 | 15 | 15 | 213 |
+| Load requests completed during incident 2 | 34 | 38 | 260 |
+| CheckoutLatencyP95High | fired | fired | never pending or firing |
+| Live orders vs active reservations | 800 vs 215 | 853 vs 853 | 1040 vs 1040 |
+
+Alert timing in run 5, seconds after the failure was injected: ServiceDown (promise-service) 26.2, CheckoutDegraded 32.2, ServiceDown (inventory-service) 26.1, CheckoutUnavailable 32.1, GatewayHighErrorRate 46.2.
+
+### Findings
+
+- Checkout latency stayed at the baseline during both outages, and the load generator kept completing about 5 checkouts per second (213 during incident 1, against 15 before).
+- The number of HTTP 503 responses during incident 2 rose from 36 (run 2) to 258 because failing requests now return immediately and the generator is closed-loop, so it sends more of them. The failure rate during the outage was about 99% in both runs (2 of 260 succeeded, against 2 of 38). This is not a regression; the same unavailability is reported without the delay.
+- Consistency held: 1040 live orders equal 1040 active reservations, and equal the 836 successful plus 204 degraded checkouts; 0 compensations failed.
+- The earlier `rollbacks_exact` flag in the drill output reads False for this run and is obsolete: it assumed every unavailable checkout created an order that was then cancelled. Orders created minus cancelled is 1040; cancelled orders (129) equal out-of-stock rejections (121) plus 8, which suggests only 8 unavailable checkouts created and cancelled an order and the other 259 were rejected before an order existed (inferred from these totals). The drill script now reports `no_phantom_orders` (live orders equal successful plus degraded checkouts). Older result files keep the old flag.
+- Right after inventory-service restarted, 9 load requests got 503, against 3 in run 2. The likely reason is the same 2.2 s window at a much higher request rate, but circuit lag was not ruled out. The drill's health polling uses the breaker bypass, which closes the circuit on success, so this drill did not exercise the half-open trial path; the unit tests do.
+- Still open: the load generator is closed-loop, so real open-loop traffic (k6) would show queueing behaviour this drill cannot, and each result comes from a single run.
