@@ -57,3 +57,20 @@ groups:
         annotations:
           summary: "An order could not be cancelled during checkout rollback"
           description: "Orphaned order(s) may exist without a stock reservation. Reconcile manually."
+
+      - alert: DatabaseUnreachable
+        expr: db_up == 0
+        for: 15s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} cannot reach its database"
+          description: "db_up has been 0 for 15 s. The service is running but every database call fails."
+
+      - alert: ServiceRestarted
+        expr: changes(process_start_time_seconds{job!="prometheus"}[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} restarted in the last 10 minutes"
+          description: "The process start time changed. Check for lost in-memory state and for crash loops."

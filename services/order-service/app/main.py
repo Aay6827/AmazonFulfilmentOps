@@ -2,7 +2,13 @@ import os
 import time
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Gauge,
+    Histogram,
+    generate_latest,
+)
 
 from .models import Order, OrderCreate
 from .store import OrderStore
@@ -20,6 +26,9 @@ def make_store():
 
 
 store = make_store()
+
+DB_UP = Gauge("db_up", "1 if the database answers a ping, evaluated at scrape time")
+DB_UP.set_function(lambda: 1 if store.ping() else 0)
 
 REQUESTS = Counter(
     "order_http_requests_total", "HTTP requests", ["method", "path", "status"]
