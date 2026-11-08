@@ -110,7 +110,8 @@ def main():
             time.sleep(1)
         block["first_successful_checkout_after_s"] = recovered
         drill.log(f"first successful checkout after {recovered}s")
-        block["healthy_after_s"] = drill.wait_healthy(120)
+        waited = drill.wait_healthy(120)
+        block["healthy_after_s"] = None if waited is None else round(time.time() - since, 1)
         block["resolved_after_s"] = resolved_map(wanted, since, 240)
         block["reconcile_before"] = before
         block["reconcile_after"] = reconcile("after PostgreSQL outage")

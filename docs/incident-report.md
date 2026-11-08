@@ -98,7 +98,7 @@ The generator-side figures (about 2.9 s and 2.0 s per request, from throughput) 
 
 | Priority | Action | How we will know it is fixed |
 |---|---|---|
-| P1 | Persist state in a database instead of process memory. DONE for inventory-service (PostgreSQL; run 2 shows 0 orders without a reservation). OPEN for order-service, which is still in-memory (see follow-up), and RDS in Terraform | Run 2 for inventory-service; a drill that restarts order-service and finds no orphaned reservations |
+| P1 | Persist state in a database instead of process memory. DONE for inventory-service and order-service (PostgreSQL; see the follow-ups). OPEN: RDS in Terraform and separate instances per service | Run 2 and run 3 drills; scripts/orphan_probe.py |
 | P1 | Add a reconciliation check comparing live orders with reservations; alert when they differ | The drill's derived metric becomes a standing alert |
 | P1 | Alert on service restarts (`changes(process_start_time_seconds[10m]) > 0`) | Alert fires within one scrape of a restart |
 | P1 | Alert on out-of-stock ratio spikes (for example above 50% of checkouts over 1 minute; tune to the real baseline) | Fires during a repeat of the empty-inventory scenario |
@@ -153,7 +153,7 @@ The two runs agree to within about 4 seconds, which gives a rough sense of run-t
 
 Not changed by this fix, and visible in run 2: checkout is still slow while a dependency is down. The generator completed 15 requests during incident 1 and 38 during incident 2, against about 5 per second normally. The gateway deadline and circuit breaker are still open.
 
-### Remaining gaps
+### Remaining gaps at the time of run 2 (both addressed in the follow-up below)
 
 - order-service is still in-memory. If it restarts, orders disappear but their reservations remain in PostgreSQL, so stock is held for orders that no longer exist.
 - The drill restarts services but never takes PostgreSQL itself down, so a database outage is untested.
@@ -170,3 +170,56 @@ CheckoutLatencyP95High (threshold 0.5 s for 1 minute) during the drill: firing, 
 process_start_time_seconds is exported by 6 scrape targets, so a restart alert based on it is possible.
 
 Reading run 2: incident 1 peaked at a p95 of 4.88 s against 9.25 s in run 1, so single-run peaks differ by about 2x and the stall length clearly varies from run to run. Incident 2's figures (mean 2.31 s, p95 3.62 s) are identical to run 1's to two decimals. The baseline and incident 1 rows differ between the runs, and the monitoring volume was recreated between them, so the query is not reading the same data. The match is most likely coincidence from the closed-loop generator and histogram bucket interpolation, which is an unverified explanation.
+
+## Follow-up: order persistence and database drill (run 3, 2026-11-08)
+
+order-service now stores orders in PostgreSQL as well (a separate `orders` database on the same instance). A third drill then restarted order-service and took PostgreSQL itself down under load. Raw data: `docs/drill-results-db.json`.
+
+### Mirror-image probe: orders against reservations across an order-service restart
+
+| | order-service in memory | order-service on PostgreSQL |
+|---|---|---|
+| Order lookup after the restart | HTTP 404 | HTTP 200 for 5 of 5 orders |
+| Live orders vs active reservations | order gone, 854 reservations unchanged | 5 live orders, 5 active reservations |
+
+The probe is `scripts/orphan_probe.py`. It exits non-zero if orders are lost or the two counts disagree.
+
+### Drill results
+
+| | Incident 3: order-service stopped | Incident 4: PostgreSQL stopped |
+|---|---|---|
+| Outage length | 45.1 s | 81.0 s |
+| Alerts and time to fire | ServiceDown (order-service) 22.1 s, CheckoutUnavailable 32.2 s | CheckoutUnavailable 28.2 s, GatewayHighErrorRate 62.3 s |
+| ServiceDown fired for any service | yes | no |
+| Customer symptom | 14 load-generator checkouts failed with HTTP 503 | 41 failed with 503 during the outage and 7 more before recovery; 3 probe checkouts each failed after 2.0 s |
+| Recovery | healthy 2.1 s after restart | first successful checkout 15.7 s after PostgreSQL restarted |
+| Alerts cleared after restart | ServiceDown 12.1 s, CheckoutUnavailable 68.4 s | GatewayHighErrorRate 66.0 s, CheckoutUnavailable 82.1 s |
+
+### Reconciliation of orders against reservations
+
+| Snapshot | Live orders | Active reservations |
+|---|---|---|
+| Baseline, under load | 134 | 140 |
+| After the order-service restart, under load | 447 | 451 |
+| Before the PostgreSQL outage, under load | 545 | 550 |
+| After the PostgreSQL outage, under load | 865 | 869 |
+| Final, load stopped | 869 | 869 |
+
+### Findings
+
+- Persistence held through both incidents. Live orders kept growing across the order-service restart (134 to 447) and nothing was lost. The final snapshot, taken with the load stopped, shows exact equality and the gateway's compensation-failure counter stayed at 0.
+- The mid-run snapshots show 4 to 6 more reservations than orders. This is most likely a sampling artifact: the two counts are read one after the other, about a second apart, while about 4 checkouts per second complete, so inventory is read slightly later than orders. It is supported by the final snapshot and by the orphan probe (no concurrent load) but was not proven separately. Pausing the load before reconciling would measure this cleanly.
+- During the PostgreSQL outage checkouts failed fast: three probe checkouts returned 503 after 2.00 to 2.01 s. That matches both the connection pool timeout and the gateway's own 2 s timeout, so it is not known which fires first.
+- The services stayed up during the database outage, so ServiceDown never fired. The first alert was CheckoutUnavailable at 28.2 s. No alert says the database is down.
+- Recovery took 15.7 s from PostgreSQL restarting to the first successful checkout, with 7 more 503s seen by the load generator in that interval. How much of that is database startup and how much is the pool reconnecting was not measured. The `healthy_after_s` value of 0.0 for incident 4 in `drill-results-db.json` is a measurement artifact (sampled after the recovery loop); the script now measures it from the restart.
+- Alerts clear 66 to 82 s after recovery because of the 1-minute rate windows.
+- No orphan order appeared when PostgreSQL went down. Both services share one PostgreSQL instance, so during an outage the gateway cannot cancel an order it has just created (the cancel call needs the same database). A single run says little about a narrow window, so the structural risk remains.
+
+### Action items from run 3
+
+| Priority | Action | How we will know it is fixed |
+|---|---|---|
+| P1 | Add a DatabaseUnreachable alert: expose a `db_up` gauge evaluated at scrape time in both services and alert after 15 s | Repeat the PostgreSQL outage: the alert fires before CheckoutUnavailable |
+| P1 | Add a ServiceRestarted alert based on `changes(process_start_time_seconds[10m]) > 0` | A quick restart (about 2 s) raises it; in this drill ServiceDown only fired because the service stayed stopped for 45 s |
+| P2 | Separate PostgreSQL instances per service (or a managed instance with a replica) and add a reconciliation job that finds orders without reservations | An outage drill that checks reconciliation directly |
+| P2 | Pause the load before taking the reconciliation snapshots | Mid-run snapshots agree exactly |
