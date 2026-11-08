@@ -1,0 +1,219 @@
+{
+  "incidents": {
+    "incident_3_order_service_down": {
+      "service": "order-service",
+      "detected_after_s": {
+        "ServiceDown(order-service)": 22.1,
+        "CheckoutUnavailable": 32.2
+      },
+      "not_fired": [],
+      "healthy_after_s": 2.1,
+      "resolved_after_s": {
+        "ServiceDown(order-service)": 12.1,
+        "CheckoutUnavailable": 68.4
+      },
+      "reconcile_after": {
+        "live_orders": 447,
+        "active_reservations": 451,
+        "orders_without_reservation": 0,
+        "reservations_without_order": 4
+      }
+    },
+    "incident_4_postgres_down": {
+      "service": "postgres",
+      "detected_after_s": {
+        "CheckoutUnavailable": 28.2,
+        "GatewayHighErrorRate": 62.3
+      },
+      "not_fired": [],
+      "service_down_alerts_firing": [],
+      "probe_checkouts_during_outage": [
+        {
+          "status": 503,
+          "seconds": 2.0
+        },
+        {
+          "status": 503,
+          "seconds": 2.01
+        },
+        {
+          "status": 503,
+          "seconds": 2.01
+        }
+      ],
+      "first_successful_checkout_after_s": 15.7,
+      "healthy_after_s": 0.0,
+      "resolved_after_s": {
+        "GatewayHighErrorRate": 66.0,
+        "CheckoutUnavailable": 82.1
+      },
+      "reconcile_before": {
+        "live_orders": 545,
+        "active_reservations": 550,
+        "orders_without_reservation": 0,
+        "reservations_without_order": 5
+      },
+      "reconcile_after": {
+        "live_orders": 865,
+        "active_reservations": 869,
+        "orders_without_reservation": 0,
+        "reservations_without_order": 4
+      }
+    }
+  },
+  "reconcile_baseline": {
+    "live_orders": 134,
+    "active_reservations": 140,
+    "orders_without_reservation": 0,
+    "reservations_without_order": 6
+  },
+  "final": {
+    "compensation_failed": 0.0,
+    "checkouts_success": 869.0,
+    "checkouts_unavailable": 70.0,
+    "reconcile": {
+      "live_orders": 869,
+      "active_reservations": 869,
+      "orders_without_reservation": 0,
+      "reservations_without_order": 0
+    }
+  },
+  "client_counts_by_phase": {
+    "setup": {
+      "201": 1
+    },
+    "baseline": {
+      "201": 140,
+      "409": 19
+    },
+    "order_down": {
+      "409": 1,
+      "503": 14
+    },
+    "order_recovery": {
+      "201": 310,
+      "409": 39
+    },
+    "steady": {
+      "201": 99,
+      "409": 10
+    },
+    "postgres_down": {
+      "201": 2,
+      "503": 41
+    },
+    "postgres_recovery": {
+      "201": 316,
+      "409": 35,
+      "503": 7
+    }
+  },
+  "events": [
+    {
+      "t_seconds": 1.2,
+      "clock": "09:05:32",
+      "event": "baseline traffic (30s)"
+    },
+    {
+      "t_seconds": 33.6,
+      "clock": "09:06:04",
+      "event": "baseline: {'live_orders': 134, 'active_reservations': 140, 'orders_without_reservation': 0, 'reservations_without_order': 6}"
+    },
+    {
+      "t_seconds": 34.4,
+      "clock": "09:06:05",
+      "event": "INJECTED: order-service stopped"
+    },
+    {
+      "t_seconds": 56.5,
+      "clock": "09:06:27",
+      "event": "ALERT FIRING   ServiceDown(order-service) after 22.1s"
+    },
+    {
+      "t_seconds": 66.6,
+      "clock": "09:06:37",
+      "event": "ALERT FIRING   CheckoutUnavailable after 32.2s"
+    },
+    {
+      "t_seconds": 79.5,
+      "clock": "09:06:50",
+      "event": "RECOVERY: order-service started"
+    },
+    {
+      "t_seconds": 91.6,
+      "clock": "09:07:02",
+      "event": "ALERT RESOLVED ServiceDown(order-service) after 12.1s"
+    },
+    {
+      "t_seconds": 147.9,
+      "clock": "09:07:58",
+      "event": "ALERT RESOLVED CheckoutUnavailable after 68.4s"
+    },
+    {
+      "t_seconds": 151.9,
+      "clock": "09:08:02",
+      "event": "after order-service restart: {'live_orders': 447, 'active_reservations': 451, 'orders_without_reservation': 0, 'reservations_without_order': 4}"
+    },
+    {
+      "t_seconds": 151.9,
+      "clock": "09:08:02",
+      "event": "steady state (20s)"
+    },
+    {
+      "t_seconds": 173.9,
+      "clock": "09:08:24",
+      "event": "before PostgreSQL outage: {'live_orders': 545, 'active_reservations': 550, 'orders_without_reservation': 0, 'reservations_without_order': 5}"
+    },
+    {
+      "t_seconds": 174.5,
+      "clock": "09:08:25",
+      "event": "INJECTED: postgres stopped"
+    },
+    {
+      "t_seconds": 202.7,
+      "clock": "09:08:53",
+      "event": "ALERT FIRING   CheckoutUnavailable after 28.2s"
+    },
+    {
+      "t_seconds": 236.9,
+      "clock": "09:09:27",
+      "event": "ALERT FIRING   GatewayHighErrorRate after 62.3s"
+    },
+    {
+      "t_seconds": 254.9,
+      "clock": "09:09:45",
+      "event": "probe checkouts during the outage: [(503, 2.0), (503, 2.01), (503, 2.01)]"
+    },
+    {
+      "t_seconds": 255.5,
+      "clock": "09:09:46",
+      "event": "RECOVERY: postgres started"
+    },
+    {
+      "t_seconds": 271.2,
+      "clock": "09:10:02",
+      "event": "first successful checkout after 15.7s"
+    },
+    {
+      "t_seconds": 321.5,
+      "clock": "09:10:52",
+      "event": "ALERT RESOLVED GatewayHighErrorRate after 66.0s"
+    },
+    {
+      "t_seconds": 337.6,
+      "clock": "09:11:08",
+      "event": "ALERT RESOLVED CheckoutUnavailable after 82.1s"
+    },
+    {
+      "t_seconds": 341.9,
+      "clock": "09:11:12",
+      "event": "after PostgreSQL outage: {'live_orders': 865, 'active_reservations': 869, 'orders_without_reservation': 0, 'reservations_without_order': 4}"
+    },
+    {
+      "t_seconds": 352.4,
+      "clock": "09:11:23",
+      "event": "final: {'live_orders': 869, 'active_reservations': 869, 'orders_without_reservation': 0, 'reservations_without_order': 0}"
+    }
+  ],
+  "total_seconds": 352.4
+}
